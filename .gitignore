@@ -11,3 +11,11 @@
 # Temporary files
 *.tmp
 *.bak
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.venv/
