@@ -1,6 +1,6 @@
 [project]
 name = "bump-version"
-version = "1.0.0"
+dynamic = ["version"]
 description = "A CLI tool to bump semantic version tags in Git repositories"
 readme = "README.md"
 requires-python = ">=3.9"
@@ -27,8 +27,11 @@ dependencies = []
 bump-version = "bump_version.cli:main"
 
 [build-system]
-requires = ["hatchling"]
+requires = ["hatchling", "hatch-vcs"]
 build-backend = "hatchling.build"
+
+[tool.hatch.version]
+source = "vcs"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/bump_version"]
