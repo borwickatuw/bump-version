@@ -152,6 +152,44 @@ This tool follows [Semantic Versioning 2.0.0](https://semver.org/):
 4. **Tag Creation**: Creates an annotated Git tag with the new version
 5. **Optional Push**: Pushes the new tag to the remote repository
 
+## Integrating with Python Projects
+
+Rather than maintaining version strings in multiple places (git tags, `pyproject.toml`, `__init__.py`), you can configure your Python project to derive its version directly from git tags. This keeps the git tag as the single source of truth.
+
+### Using hatch-vcs
+
+If your project uses [hatchling](https://hatch.pypa.io/) as its build backend, add [hatch-vcs](https://github.com/ofek/hatch-vcs) to automatically read versions from git tags:
+
+```toml
+[build-system]
+requires = ["hatchling", "hatch-vcs"]
+build-backend = "hatchling.build"
+
+[project]
+name = "your-package"
+dynamic = ["version"]
+
+[tool.hatch.version]
+source = "vcs"
+```
+
+Now when you run `bump-version` to create a new tag, your package will automatically use that version when built—no need to edit any files.
+
+### Using setuptools-scm
+
+For projects using setuptools, [setuptools-scm](https://github.com/pypa/setuptools-scm) provides similar functionality:
+
+```toml
+[build-system]
+requires = ["setuptools>=64", "setuptools-scm>=8"]
+build-backend = "setuptools.build_meta"
+
+[project]
+dynamic = ["version"]
+
+[tool.setuptools_scm]
+```
+
 ## Requirements
 
 - Python 3.9+
