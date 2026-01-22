@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import argparse
+import os
 import re
 import subprocess
 import sys
+import tempfile
 from dataclasses import dataclass
 from enum import Enum
 from typing import NoReturn
@@ -259,6 +261,89 @@ def prompt_bump_type() -> BumpType:
             print_warning("Invalid choice. Please enter 1, 2, or 3.")
 
 
+def prompt_message(default_message: str) -> str:
+    """Prompt the user for a tag message, with option to edit in $EDITOR."""
+    print()
+    print_info(f"Default tag message: {default_message}")
+    print("  1) Use default message")
+    print("  2) Type a custom message")
+    print("  3) Edit in $EDITOR")
+    print()
+
+    while True:
+        try:
+            choice = input("Enter choice [1-3] (default: 1): ").strip()
+        except (EOFError, KeyboardInterrupt):
+            print()
+            return default_message
+
+        if choice == "" or choice == "1":
+            return default_message
+        elif choice == "2":
+            try:
+                custom = input("Enter message: ").strip()
+                if custom:
+                    return custom
+                print_warning("Message cannot be empty, using default")
+                return default_message
+            except (EOFError, KeyboardInterrupt):
+                print()
+                return default_message
+        elif choice == "3":
+            return edit_message_in_editor(default_message)
+        else:
+            print_warning("Invalid choice. Please enter 1, 2, or 3.")
+
+
+def edit_message_in_editor(default_message: str) -> str:
+    """Open $EDITOR to edit the tag message."""
+    editor = os.environ.get("EDITOR", os.environ.get("VISUAL", "vi"))
+
+    with tempfile.NamedTemporaryFile(
+        mode="w",
+        suffix=".txt",
+        prefix="bump-version-msg-",
+        delete=False,
+    ) as f:
+        f.write(default_message)
+        f.write("\n\n# Enter your tag message above.")
+        f.write("\n# Lines starting with '#' will be ignored.")
+        f.write("\n# An empty message will use the default.")
+        temp_path = f.name
+
+    try:
+        result = subprocess.run([editor, temp_path], check=False)
+        if result.returncode != 0:
+            print_warning(f"Editor exited with code {result.returncode}, using default message")
+            return default_message
+
+        with open(temp_path, encoding="utf-8") as f:
+            lines = f.readlines()
+
+        # Filter out comment lines and strip
+        message_lines = [
+            line.rstrip("\n\r") for line in lines if not line.strip().startswith("#")
+        ]
+        message = "\n".join(message_lines).strip()
+
+        if not message:
+            print_warning("Empty message, using default")
+            return default_message
+
+        return message
+    except FileNotFoundError:
+        print_warning(f"Editor '{editor}' not found, using default message")
+        return default_message
+    except OSError as e:
+        print_warning(f"Could not open editor: {e}, using default message")
+        return default_message
+    finally:
+        try:
+            os.unlink(temp_path)
+        except OSError:
+            pass
+
+
 def create_tag(tag: str, message: str, dry_run: bool = False) -> bool:
     """Create an annotated git tag."""
     if dry_run:
@@ -347,7 +432,16 @@ def cmd_bump(args: argparse.Namespace, bump_type: BumpType | None = None) -> int
         print_info(f"New version: {new_version}")
 
     # Set tag message
-    tag_message = args.message if args.message else f"Release {new_version}"
+    default_message = f"Release {new_version}"
+    if args.message:
+        # Message provided via command line
+        tag_message = args.message
+    elif args.yes:
+        # Non-interactive mode, use default
+        tag_message = default_message
+    else:
+        # Interactive mode, prompt for message
+        tag_message = prompt_message(default_message)
 
     # Confirm
     if not args.yes and not args.dry_run:
