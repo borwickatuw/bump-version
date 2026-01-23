@@ -386,8 +386,8 @@ def edit_message_in_editor(default_message: str) -> str:
 
     with tempfile.NamedTemporaryFile(
         mode="w",
-        suffix=".txt",
-        prefix="bump-version-msg-",
+        suffix="_TAG_EDITMSG",
+        prefix="bump-version-",
         delete=False,
     ) as f:
         f.write(default_message)
@@ -540,8 +540,8 @@ def cmd_bump(args: argparse.Namespace, bump_type: BumpType | None = None) -> int
     # Confirm
     if not args.yes and not args.dry_run:
         print()
-        # Show summary for confirmation (full message may be long)
-        display_msg = summary if "\n" in tag_message else tag_message
+        # Show first line for confirmation (full message may be long)
+        display_msg = tag_message.split("\n")[0] if "\n" in tag_message else tag_message
         if not prompt_yes_no(f"Create tag '{new_version}' with message '{display_msg}'?", default=True):
             print_warning("Aborted")
             return 0
