@@ -308,6 +308,11 @@ def prompt_bump_type() -> BumpType:
             print_warning("Invalid choice. Please enter 1, 2, or 3.")
 
 
+def get_editor() -> str:
+    """Get the editor command from $EDITOR, $VISUAL, or default to vi."""
+    return os.environ.get("EDITOR") or os.environ.get("VISUAL") or "vi"
+
+
 def prompt_message(summary: str, full_message: str) -> str:
     """Prompt the user for a tag message, with option to edit in $EDITOR.
 
@@ -315,13 +320,18 @@ def prompt_message(summary: str, full_message: str) -> str:
         summary: Short summary line for display
         full_message: Full default message including any detail
     """
+    editor = get_editor()
+
     print()
-    print_info(f"Default tag summary: {summary}")
-    if "\n" in full_message:
-        print_info("(Full message includes commit details)")
-    print("  1) Use default message")
-    print("  2) Type a custom message")
-    print("  3) Edit in $EDITOR")
+    print_info("Default tag message:")
+    print()
+    # Show the full message with indentation for clarity
+    for line in full_message.split("\n"):
+        print(f"    {line}")
+    print()
+    print("  1) Use this message")
+    print("  2) Edit the summary")
+    print(f"  3) Edit full message in {editor}")
     print()
 
     while True:
@@ -335,10 +345,14 @@ def prompt_message(summary: str, full_message: str) -> str:
             return full_message
         elif choice == "2":
             try:
-                custom = input("Enter message: ").strip()
-                if custom:
-                    return custom
-                print_warning("Message cannot be empty, using default")
+                print_info(f"Current summary: {summary}")
+                new_summary = input("Enter new summary: ").strip()
+                if new_summary:
+                    # Replace the first line (summary) with the new one
+                    lines = full_message.split("\n")
+                    lines[0] = new_summary
+                    return "\n".join(lines)
+                print_warning("Summary cannot be empty, using default")
                 return full_message
             except (EOFError, KeyboardInterrupt):
                 print()
@@ -351,7 +365,7 @@ def prompt_message(summary: str, full_message: str) -> str:
 
 def edit_message_in_editor(default_message: str) -> str:
     """Open $EDITOR to edit the tag message."""
-    editor = os.environ.get("EDITOR", os.environ.get("VISUAL", "vi"))
+    editor = get_editor()
 
     with tempfile.NamedTemporaryFile(
         mode="w",
