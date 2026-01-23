@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import os
 import re
+import readline
 import subprocess
 import sys
 import tempfile
@@ -313,6 +314,23 @@ def get_editor() -> str:
     return os.environ.get("EDITOR") or os.environ.get("VISUAL") or "vi"
 
 
+def input_with_prefill(prompt: str, prefill: str) -> str:
+    """Prompt for input with pre-filled editable text.
+
+    Uses readline to allow editing the prefilled text with standard
+    terminal key bindings (Ctrl+A, Ctrl+E, etc.).
+    """
+    def hook() -> None:
+        readline.insert_text(prefill)
+        readline.redisplay()
+
+    readline.set_pre_input_hook(hook)
+    try:
+        return input(prompt)
+    finally:
+        readline.set_pre_input_hook(None)
+
+
 def prompt_message(summary: str, full_message: str) -> str:
     """Prompt the user for a tag message, with option to edit in $EDITOR.
 
@@ -345,8 +363,7 @@ def prompt_message(summary: str, full_message: str) -> str:
             return full_message
         elif choice == "2":
             try:
-                print_info(f"Current summary: {summary}")
-                new_summary = input("Enter new summary: ").strip()
+                new_summary = input_with_prefill("Summary: ", summary).strip()
                 if new_summary:
                     # Replace the first line (summary) with the new one
                     lines = full_message.split("\n")
