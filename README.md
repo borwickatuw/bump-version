@@ -13,13 +13,13 @@ A command-line utility for managing semantic version tags in Git repositories.
 Run directly without installation:
 
 ```bash
-uvx --from git+https://github.com/yourusername/bump-version bump-version
+uvx --from git+https://github.com/borwickatuw/bump-version bump-version
 ```
 
 Or clone and run locally:
 
 ```bash
-git clone https://github.com/yourusername/bump-version.git
+git clone https://github.com/borwickatuw/bump-version.git
 cd bump-version
 uv run bump-version --help
 ```
@@ -27,13 +27,13 @@ uv run bump-version --help
 ### Install globally with uv
 
 ```bash
-uv tool install git+https://github.com/yourusername/bump-version
+uv tool install git+https://github.com/borwickatuw/bump-version
 ```
 
 ### Install with pip
 
 ```bash
-pip install git+https://github.com/yourusername/bump-version
+pip install git+https://github.com/borwickatuw/bump-version
 ```
 
 ## Usage
@@ -200,7 +200,7 @@ dynamic = ["version"]
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/bump-version.git
+git clone https://github.com/borwickatuw/bump-version.git
 cd bump-version
 
 # Install development dependencies
@@ -223,4 +223,4 @@ If your repository has no existing version tags, `bump-version` will start from 
 
 ## License
 
-MIT License - feel free to use and modify as needed.
+BSD 3-Clause License - see [LICENSE.md](LICENSE.md) for details.
