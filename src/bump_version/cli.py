@@ -211,6 +211,53 @@ def get_current_version(prefix: str = "v") -> Version | None:
     return parse_version(tags[-1], prefix)
 
 
+def get_commits_since_tag(tag: str | None) -> list[str]:
+    """
+    Get list of commit messages since the given tag.
+
+    If tag is None, returns all commits.
+    Returns a list of commit subject lines.
+    """
+    if tag:
+        # Get commits from tag to HEAD
+        result = run_git("log", f"{tag}..HEAD", "--pretty=format:%s", check=False)
+    else:
+        # No tag, get all commits
+        result = run_git("log", "--pretty=format:%s", check=False)
+
+    if result.returncode != 0 or not result.stdout.strip():
+        return []
+
+    return [line.strip() for line in result.stdout.strip().split("\n") if line.strip()]
+
+
+def show_changes_since_version(current_version: Version | None) -> list[str]:
+    """Display and return commits since the current version."""
+    if current_version:
+        tag = str(current_version)
+        commits = get_commits_since_tag(tag)
+        if commits:
+            print()
+            print_info(f"Changes since {current_version}:")
+            for commit in commits:
+                print(f"  • {commit}")
+        else:
+            print()
+            print_warning(f"No commits since {current_version}")
+    else:
+        commits = get_commits_since_tag(None)
+        if commits:
+            print()
+            print_info("Commits in repository:")
+            # Show last 10 if there are many
+            display_commits = commits[:10]
+            for commit in display_commits:
+                print(f"  • {commit}")
+            if len(commits) > 10:
+                print(f"  ... and {len(commits) - 10} more commits")
+    return commits
+
+
 def get_initial_version(bump_type: BumpType, prefix: str = "v") -> Version:
     """Get the initial version when no tags exist."""
     if bump_type == BumpType.MAJOR:
@@ -261,10 +308,17 @@ def prompt_bump_type() -> BumpType:
             print_warning("Invalid choice. Please enter 1, 2, or 3.")
 
 
-def prompt_message(default_message: str) -> str:
-    """Prompt the user for a tag message, with option to edit in $EDITOR."""
+def prompt_message(summary: str, full_message: str) -> str:
+    """Prompt the user for a tag message, with option to edit in $EDITOR.
+
+    Args:
+        summary: Short summary line for display
+        full_message: Full default message including any detail
+    """
     print()
-    print_info(f"Default tag message: {default_message}")
+    print_info(f"Default tag summary: {summary}")
+    if "\n" in full_message:
+        print_info("(Full message includes commit details)")
     print("  1) Use default message")
     print("  2) Type a custom message")
     print("  3) Edit in $EDITOR")
@@ -275,22 +329,22 @@ def prompt_message(default_message: str) -> str:
             choice = input("Enter choice [1-3] (default: 1): ").strip()
         except (EOFError, KeyboardInterrupt):
             print()
-            return default_message
+            return full_message
 
         if choice == "" or choice == "1":
-            return default_message
+            return full_message
         elif choice == "2":
             try:
                 custom = input("Enter message: ").strip()
                 if custom:
                     return custom
                 print_warning("Message cannot be empty, using default")
-                return default_message
+                return full_message
             except (EOFError, KeyboardInterrupt):
                 print()
-                return default_message
+                return full_message
         elif choice == "3":
-            return edit_message_in_editor(default_message)
+            return edit_message_in_editor(full_message)
         else:
             print_warning("Invalid choice. Please enter 1, 2, or 3.")
 
@@ -414,6 +468,9 @@ def cmd_bump(args: argparse.Namespace, bump_type: BumpType | None = None) -> int
     else:
         print_info(f"Current version: {current}")
 
+    # Show changes since last version
+    commits = show_changes_since_version(current)
+
     # Get bump type
     if bump_type is None:
         bump_type = prompt_bump_type()
@@ -431,8 +488,14 @@ def cmd_bump(args: argparse.Namespace, bump_type: BumpType | None = None) -> int
     else:
         print_info(f"New version: {new_version}")
 
-    # Set tag message
-    default_message = f"Release {new_version}"
+    # Build default tag message with summary and detail
+    summary = f"Release {new_version}"
+    if commits:
+        detail_lines = ["Changes:"] + [f"- {c}" for c in commits]
+        default_message = summary + "\n\n" + "\n".join(detail_lines)
+    else:
+        default_message = summary
+
     if args.message:
         # Message provided via command line
         tag_message = args.message
@@ -441,12 +504,14 @@ def cmd_bump(args: argparse.Namespace, bump_type: BumpType | None = None) -> int
         tag_message = default_message
     else:
         # Interactive mode, prompt for message
-        tag_message = prompt_message(default_message)
+        tag_message = prompt_message(summary, default_message)
 
     # Confirm
     if not args.yes and not args.dry_run:
         print()
-        if not prompt_yes_no(f"Create tag '{new_version}' with message '{tag_message}'?"):
+        # Show summary for confirmation (full message may be long)
+        display_msg = summary if "\n" in tag_message else tag_message
+        if not prompt_yes_no(f"Create tag '{new_version}' with message '{display_msg}'?", default=True):
             print_warning("Aborted")
             return 0
 
