@@ -152,6 +152,12 @@ This tool follows [Semantic Versioning 2.0.0](https://semver.org/):
 4. **Tag Creation**: Creates an annotated Git tag with the new version
 5. **Optional Push**: Pushes the new tag to the remote repository
 
+### Note on Tag Pushing
+
+When you push a tag (via `--push` or the interactive prompt), `bump-version` runs `git push origin <tag>`. This pushes the tag and the commit it points to, but **does not update your branch on the remote**.
+
+After pushing a tag, you may still see "Your branch is ahead of origin/main by X commits" because the branch reference wasn't pushed—only the tag was. The commits exist on the remote and are accessible via the tag, but if you want your branch to reflect those commits on the remote, you'll need to run `git push` separately.
+
 ## Integrating with Python Projects
 
 Rather than maintaining version strings in multiple places (git tags, `pyproject.toml`, `__init__.py`), you can configure your Python project to derive its version directly from git tags. This keeps the git tag as the single source of truth.
