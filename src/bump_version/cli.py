@@ -69,27 +69,27 @@ class Color:
         return text
 
 
-def print_info(message: str) -> None:
+def _print_info(message: str) -> None:
     """Print an info message in blue."""
     print(Color.wrap(message, Color.BLUE))
 
 
-def print_success(message: str) -> None:
+def _print_success(message: str) -> None:
     """Print a success message in green."""
     print(Color.wrap(message, Color.GREEN))
 
 
-def print_warning(message: str) -> None:
+def _print_warning(message: str) -> None:
     """Print a warning message in yellow."""
     print(Color.wrap(message, Color.YELLOW))
 
 
-def print_error(message: str) -> None:
+def _print_error(message: str) -> None:
     """Print an error message in red to stderr."""
     print(Color.wrap(message, Color.RED), file=sys.stderr)
 
 
-def run_git(*args: str, check: bool = True, capture: bool = True) -> subprocess.CompletedProcess[str]:
+def _run_git(*args: str, check: bool = True, capture: bool = True) -> subprocess.CompletedProcess[str]:
     """
     Run a git command safely.
 
@@ -104,57 +104,63 @@ def run_git(*args: str, check: bool = True, capture: bool = True) -> subprocess.
     )
 
 
-def is_git_repo() -> bool:
+def _is_git_repo() -> bool:
     """Check if the current directory is a git repository."""
-    result = run_git("rev-parse", "--git-dir", check=False)
+    result = _run_git("rev-parse", "--git-dir", check=False)
     return result.returncode == 0
 
 
-def get_remotes() -> list[str]:
+def _get_remotes() -> list[str]:
     """Get list of configured remotes."""
-    result = run_git("remote")
+    result = _run_git("remote")
     return [r.strip() for r in result.stdout.strip().split("\n") if r.strip()]
 
 
-def get_current_branch() -> str | None:
+def _get_default_remote() -> str | None:
+    """Get the first configured remote, or None if no remotes exist."""
+    remotes = _get_remotes()
+    if not remotes:
+        return None
+    return remotes[0]
+
+
+def _get_current_branch() -> str | None:
     """Get the current branch name, or None if detached HEAD."""
-    result = run_git("symbolic-ref", "--short", "HEAD", check=False)
+    result = _run_git("symbolic-ref", "--short", "HEAD", check=False)
     if result.returncode == 0:
         return result.stdout.strip()
     return None
 
 
-def sync_repo() -> None:
+def _sync_repo() -> None:
     """Sync the repository by fetching tags and pulling the current branch."""
-    print_info("Syncing repository...")
+    _print_info("Syncing repository...")
 
-    remotes = get_remotes()
-    if not remotes:
-        print_warning("No remote configured, skipping sync")
+    remote = _get_default_remote()
+    if not remote:
+        _print_warning("No remote configured, skipping sync")
         return
 
-    remote = remotes[0]
-
     # Fetch all tags
-    print_info(f"Fetching tags from {remote}...")
-    result = run_git("fetch", remote, "--tags", check=False)
+    _print_info(f"Fetching tags from {remote}...")
+    result = _run_git("fetch", remote, "--tags", check=False)
     if result.returncode == 0:
-        print_success("Tags fetched successfully")
+        _print_success("Tags fetched successfully")
     else:
-        print_warning("Could not fetch tags (network issue or no remote access)")
+        _print_warning("Could not fetch tags (network issue or no remote access)")
 
     # Pull current branch
-    branch = get_current_branch()
+    branch = _get_current_branch()
     if branch:
-        print_info(f"Pulling latest changes for branch '{branch}'...")
-        result = run_git("pull", remote, branch, check=False)
+        _print_info(f"Pulling latest changes for branch '{branch}'...")
+        result = _run_git("pull", remote, branch, check=False)
         if result.returncode == 0:
-            print_success("Branch updated successfully")
+            _print_success("Branch updated successfully")
         else:
-            print_warning("Could not pull branch (may have uncommitted changes or no tracking)")
+            _print_warning("Could not pull branch (may have uncommitted changes or no tracking)")
 
 
-def get_version_tags(prefix: str = "v") -> list[str]:
+def _get_version_tags(prefix: str = "v") -> list[str]:
     """
     Get all version tags matching semantic versioning pattern.
 
@@ -166,7 +172,7 @@ def get_version_tags(prefix: str = "v") -> list[str]:
     else:
         pattern = "[0-9]*.[0-9]*.[0-9]*"
 
-    result = run_git("tag", "-l", pattern, check=False)
+    result = _run_git("tag", "-l", pattern, check=False)
     if result.returncode != 0:
         return []
 
@@ -174,7 +180,7 @@ def get_version_tags(prefix: str = "v") -> list[str]:
 
     # Sort by version number
     def version_key(tag: str) -> tuple[int, int, int]:
-        version = parse_version(tag, prefix)
+        version = _parse_version(tag, prefix)
         if version:
             return (version.major, version.minor, version.patch)
         return (0, 0, 0)
@@ -182,7 +188,7 @@ def get_version_tags(prefix: str = "v") -> list[str]:
     return sorted(tags, key=version_key)
 
 
-def parse_version(tag: str, prefix: str = "v") -> Version | None:
+def _parse_version(tag: str, prefix: str = "v") -> Version | None:
     """Parse a version tag into a Version object."""
     # Remove prefix
     version_str = tag
@@ -202,17 +208,17 @@ def parse_version(tag: str, prefix: str = "v") -> Version | None:
     )
 
 
-def get_current_version(prefix: str = "v") -> Version | None:
+def _get_current_version(prefix: str = "v") -> Version | None:
     """Get the current (latest) version from tags."""
-    tags = get_version_tags(prefix)
+    tags = _get_version_tags(prefix)
     if not tags:
         return None
 
     # Return the highest version (last in sorted list)
-    return parse_version(tags[-1], prefix)
+    return _parse_version(tags[-1], prefix)
 
 
-def get_commits_since_tag(tag: str | None) -> list[str]:
+def _get_commits_since_tag(tag: str | None) -> list[str]:
     """
     Get list of commit messages since the given tag.
 
@@ -221,10 +227,10 @@ def get_commits_since_tag(tag: str | None) -> list[str]:
     """
     if tag:
         # Get commits from tag to HEAD
-        result = run_git("log", f"{tag}..HEAD", "--pretty=format:%s", check=False)
+        result = _run_git("log", f"{tag}..HEAD", "--pretty=format:%s", check=False)
     else:
         # No tag, get all commits
-        result = run_git("log", "--pretty=format:%s", check=False)
+        result = _run_git("log", "--pretty=format:%s", check=False)
 
     if result.returncode != 0 or not result.stdout.strip():
         return []
@@ -232,24 +238,24 @@ def get_commits_since_tag(tag: str | None) -> list[str]:
     return [line.strip() for line in result.stdout.strip().split("\n") if line.strip()]
 
 
-def show_changes_since_version(current_version: Version | None) -> list[str]:
+def _show_changes_since_version(current_version: Version | None) -> list[str]:
     """Display and return commits since the current version."""
     if current_version:
         tag = str(current_version)
-        commits = get_commits_since_tag(tag)
+        commits = _get_commits_since_tag(tag)
         if commits:
             print()
-            print_info(f"Changes since {current_version}:")
+            _print_info(f"Changes since {current_version}:")
             for commit in commits:
                 print(f"  • {commit}")
         else:
             print()
-            print_warning(f"No commits since {current_version}")
+            _print_warning(f"No commits since {current_version}")
     else:
-        commits = get_commits_since_tag(None)
+        commits = _get_commits_since_tag(None)
         if commits:
             print()
-            print_info("Commits in repository:")
+            _print_info("Commits in repository:")
             # Show last 10 if there are many
             display_commits = commits[:10]
             for commit in display_commits:
@@ -259,17 +265,7 @@ def show_changes_since_version(current_version: Version | None) -> list[str]:
     return commits
 
 
-def get_initial_version(bump_type: BumpType, prefix: str = "v") -> Version:
-    """Get the initial version when no tags exist."""
-    if bump_type == BumpType.MAJOR:
-        return Version(1, 0, 0, prefix)
-    elif bump_type == BumpType.MINOR:
-        return Version(0, 1, 0, prefix)
-    else:  # PATCH
-        return Version(0, 0, 1, prefix)
-
-
-def prompt_yes_no(message: str, default: bool = False) -> bool:
+def _prompt_yes_no(message: str, default: bool = False) -> bool:
     """Prompt the user for a yes/no response."""
     suffix = "[Y/n]" if default else "[y/N]"
     try:
@@ -283,10 +279,10 @@ def prompt_yes_no(message: str, default: bool = False) -> bool:
     return response in ("y", "yes")
 
 
-def prompt_bump_type() -> BumpType:
+def _prompt_bump_type() -> BumpType:
     """Prompt the user to select a bump type."""
     print()
-    print_info("What type of version bump would you like to make?")
+    _print_info("What type of version bump would you like to make?")
     print("  1) major - Breaking changes (X.0.0)")
     print("  2) minor - New features, backwards compatible (x.Y.0)")
     print("  3) patch - Bug fixes, backwards compatible (x.y.Z)")
@@ -306,15 +302,15 @@ def prompt_bump_type() -> BumpType:
         elif choice in ("3", "patch"):
             return BumpType.PATCH
         else:
-            print_warning("Invalid choice. Please enter 1, 2, or 3.")
+            _print_warning("Invalid choice. Please enter 1, 2, or 3.")
 
 
-def get_editor() -> str:
+def _get_editor() -> str:
     """Get the editor command from $EDITOR, $VISUAL, or default to vi."""
     return os.environ.get("EDITOR") or os.environ.get("VISUAL") or "vi"
 
 
-def input_with_prefill(prompt: str, prefill: str) -> str:
+def _input_with_prefill(prompt: str, prefill: str) -> str:
     """Prompt for input with pre-filled editable text.
 
     Uses readline to allow editing the prefilled text with standard
@@ -331,17 +327,17 @@ def input_with_prefill(prompt: str, prefill: str) -> str:
         readline.set_pre_input_hook(None)
 
 
-def prompt_message(summary: str, full_message: str) -> str:
+def _prompt_message(summary: str, full_message: str) -> str:
     """Prompt the user for a tag message, with option to edit in $EDITOR.
 
     Args:
         summary: Short summary line for display
         full_message: Full default message including any detail
     """
-    editor = get_editor()
+    editor = _get_editor()
 
     print()
-    print_info("Default tag message:")
+    _print_info("Default tag message:")
     print()
     # Show the full message with indentation for clarity
     for line in full_message.split("\n"):
@@ -363,26 +359,26 @@ def prompt_message(summary: str, full_message: str) -> str:
             return full_message
         elif choice == "2":
             try:
-                new_summary = input_with_prefill("Summary: ", summary).strip()
+                new_summary = _input_with_prefill("Summary: ", summary).strip()
                 if new_summary:
                     # Replace the first line (summary) with the new one
                     lines = full_message.split("\n")
                     lines[0] = new_summary
                     return "\n".join(lines)
-                print_warning("Summary cannot be empty, using default")
+                _print_warning("Summary cannot be empty, using default")
                 return full_message
             except (EOFError, KeyboardInterrupt):
                 print()
                 return full_message
         elif choice == "3":
-            return edit_message_in_editor(full_message)
+            return _edit_message_in_editor(full_message)
         else:
-            print_warning("Invalid choice. Please enter 1, 2, or 3.")
+            _print_warning("Invalid choice. Please enter 1, 2, or 3.")
 
 
-def edit_message_in_editor(default_message: str) -> str:
+def _edit_message_in_editor(default_message: str) -> str:
     """Open $EDITOR to edit the tag message."""
-    editor = get_editor()
+    editor = _get_editor()
 
     with tempfile.NamedTemporaryFile(
         mode="w",
@@ -399,7 +395,7 @@ def edit_message_in_editor(default_message: str) -> str:
     try:
         result = subprocess.run([editor, temp_path], check=False)
         if result.returncode != 0:
-            print_warning(f"Editor exited with code {result.returncode}, using default message")
+            _print_warning(f"Editor exited with code {result.returncode}, using default message")
             return default_message
 
         with open(temp_path, encoding="utf-8") as f:
@@ -412,15 +408,15 @@ def edit_message_in_editor(default_message: str) -> str:
         message = "\n".join(message_lines).strip()
 
         if not message:
-            print_warning("Empty message, using default")
+            _print_warning("Empty message, using default")
             return default_message
 
         return message
     except FileNotFoundError:
-        print_warning(f"Editor '{editor}' not found, using default message")
+        _print_warning(f"Editor '{editor}' not found, using default message")
         return default_message
     except OSError as e:
-        print_warning(f"Could not open editor: {e}, using default message")
+        _print_warning(f"Could not open editor: {e}, using default message")
         return default_message
     finally:
         try:
@@ -429,50 +425,49 @@ def edit_message_in_editor(default_message: str) -> str:
             pass
 
 
-def create_tag(tag: str, message: str, dry_run: bool = False) -> bool:
+def _create_tag(tag: str, message: str, dry_run: bool = False) -> bool:
     """Create an annotated git tag."""
     if dry_run:
-        print_info(f"[DRY RUN] Would create tag: {tag}")
-        print_info(f"[DRY RUN] Message: {message}")
+        _print_info(f"[DRY RUN] Would create tag: {tag}")
+        _print_info(f"[DRY RUN] Message: {message}")
         return True
 
-    print_info(f"Creating tag '{tag}'...")
-    result = run_git("tag", "-a", tag, "-m", message, check=False)
+    _print_info(f"Creating tag '{tag}'...")
+    result = _run_git("tag", "-a", tag, "-m", message, check=False)
 
     if result.returncode == 0:
-        print_success(f"Tag '{tag}' created successfully")
+        _print_success(f"Tag '{tag}' created successfully")
         return True
     else:
-        print_error(f"Failed to create tag: {result.stderr}")
+        _print_error(f"Failed to create tag: {result.stderr}")
         return False
 
 
-def push_tag(tag: str, dry_run: bool = False) -> bool:
+def _push_tag(tag: str, dry_run: bool = False) -> bool:
     """Push a tag to the remote repository."""
     if dry_run:
-        print_info(f"[DRY RUN] Would push tag: {tag}")
+        _print_info(f"[DRY RUN] Would push tag: {tag}")
         return True
 
-    remotes = get_remotes()
-    if not remotes:
-        print_warning("No remote configured, skipping push")
+    remote = _get_default_remote()
+    if not remote:
+        _print_warning("No remote configured, skipping push")
         return True
 
-    remote = remotes[0]
-    print_info(f"Pushing tag '{tag}' to {remote}...")
-    result = run_git("push", remote, tag, check=False)
+    _print_info(f"Pushing tag '{tag}' to {remote}...")
+    result = _run_git("push", remote, tag, check=False)
 
     if result.returncode == 0:
-        print_success("Tag pushed successfully")
+        _print_success("Tag pushed successfully")
         return True
     else:
-        print_error(f"Failed to push tag: {result.stderr}")
+        _print_error(f"Failed to push tag: {result.stderr}")
         return False
 
 
-def cmd_current(args: argparse.Namespace) -> int:
+def _cmd_current(args: argparse.Namespace) -> int:
     """Handle the 'current' command."""
-    version = get_current_version(args.prefix)
+    version = _get_current_version(args.prefix)
     if version:
         print(str(version))
         return 0
@@ -481,43 +476,43 @@ def cmd_current(args: argparse.Namespace) -> int:
         return 1
 
 
-def cmd_bump(args: argparse.Namespace, bump_type: BumpType | None = None) -> int:
+def _cmd_bump(args: argparse.Namespace, bump_type: BumpType | None = None) -> int:
     """Handle version bump commands."""
     # Sync if requested
     if args.sync:
-        sync_repo()
+        _sync_repo()
     elif not args.yes:
         print()
-        if prompt_yes_no("Would you like to sync/pull the repository and tags first?"):
-            sync_repo()
+        if _prompt_yes_no("Would you like to sync/pull the repository and tags first?"):
+            _sync_repo()
 
     # Get current version
-    current = get_current_version(args.prefix)
+    current = _get_current_version(args.prefix)
 
     if current is None:
-        print_warning(f"No existing version tags found (looking for {args.prefix}X.Y.Z pattern)")
+        _print_warning(f"No existing version tags found (looking for {args.prefix}X.Y.Z pattern)")
     else:
-        print_info(f"Current version: {current}")
+        _print_info(f"Current version: {current}")
 
     # Show changes since last version
-    commits = show_changes_since_version(current)
+    commits = _show_changes_since_version(current)
 
     # Get bump type
     if bump_type is None:
-        bump_type = prompt_bump_type()
+        bump_type = _prompt_bump_type()
 
     # Calculate new version
     if current is None:
-        new_version = get_initial_version(bump_type, args.prefix)
+        new_version = Version(0, 0, 0, args.prefix).bump(bump_type)
     else:
         new_version = current.bump(bump_type)
 
     print()
-    print_info(f"Bump type: {bump_type.value}")
+    _print_info(f"Bump type: {bump_type.value}")
     if current:
-        print_info(f"Version change: {current} -> {new_version}")
+        _print_info(f"Version change: {current} -> {new_version}")
     else:
-        print_info(f"New version: {new_version}")
+        _print_info(f"New version: {new_version}")
 
     # Build default tag message with summary and detail
     summary = f"Release {new_version}"
@@ -535,40 +530,40 @@ def cmd_bump(args: argparse.Namespace, bump_type: BumpType | None = None) -> int
         tag_message = default_message
     else:
         # Interactive mode, prompt for message
-        tag_message = prompt_message(summary, default_message)
+        tag_message = _prompt_message(summary, default_message)
 
     # Confirm
     if not args.yes and not args.dry_run:
         print()
         # Show first line for confirmation (full message may be long)
         display_msg = tag_message.split("\n")[0] if "\n" in tag_message else tag_message
-        if not prompt_yes_no(f"Create tag '{new_version}' with message '{display_msg}'?", default=True):
-            print_warning("Aborted")
+        if not _prompt_yes_no(f"Create tag '{new_version}' with message '{display_msg}'?", default=True):
+            _print_warning("Aborted")
             return 0
 
     # Create tag
-    if not create_tag(str(new_version), tag_message, args.dry_run):
+    if not _create_tag(str(new_version), tag_message, args.dry_run):
         return 1
 
     # Push if requested
     if args.push:
-        if not push_tag(str(new_version), args.dry_run):
+        if not _push_tag(str(new_version), args.dry_run):
             return 1
     elif not args.dry_run and not args.yes:
         print()
-        if prompt_yes_no("Would you like to push the tag to remote?"):
-            if not push_tag(str(new_version), args.dry_run):
+        if _prompt_yes_no("Would you like to push the tag to remote?"):
+            if not _push_tag(str(new_version), args.dry_run):
                 return 1
 
     print()
-    print_success("Done!")
+    _print_success("Done!")
     if not args.dry_run:
-        print_info(f"New version: {new_version}")
+        _print_info(f"New version: {new_version}")
 
     return 0
 
 
-def create_parser() -> argparse.ArgumentParser:
+def _create_parser() -> argparse.ArgumentParser:
     """Create the argument parser."""
     # Common options shared by all subcommands
     common_parser = argparse.ArgumentParser(add_help=False)
@@ -642,26 +637,26 @@ Examples:
 
 def main(argv: list[str] | None = None) -> NoReturn:
     """Main entry point."""
-    parser = create_parser()
+    parser = _create_parser()
     args = parser.parse_args(argv)
 
     # Check we're in a git repo
-    if not is_git_repo():
-        print_error("Error: Not a git repository")
+    if not _is_git_repo():
+        _print_error("Error: Not a git repository")
         sys.exit(1)
 
     # Route to appropriate command
     if args.command == "current":
-        sys.exit(cmd_current(args))
+        sys.exit(_cmd_current(args))
     elif args.command == "major":
-        sys.exit(cmd_bump(args, BumpType.MAJOR))
+        sys.exit(_cmd_bump(args, BumpType.MAJOR))
     elif args.command == "minor":
-        sys.exit(cmd_bump(args, BumpType.MINOR))
+        sys.exit(_cmd_bump(args, BumpType.MINOR))
     elif args.command == "patch":
-        sys.exit(cmd_bump(args, BumpType.PATCH))
+        sys.exit(_cmd_bump(args, BumpType.PATCH))
     else:
         # Interactive mode
-        sys.exit(cmd_bump(args))
+        sys.exit(_cmd_bump(args))
 
 
 if __name__ == "__main__":
