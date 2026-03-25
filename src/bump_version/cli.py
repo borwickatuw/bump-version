@@ -324,6 +324,23 @@ def _input_with_prefill(prompt: str, prefill: str) -> str:
         readline.set_pre_input_hook(None)
 
 
+def _edit_summary(summary: str, full_message: str) -> str:
+    """Prompt to edit the summary line of a tag message."""
+    try:
+        new_summary = _input_with_prefill("Summary: ", summary).strip()
+    except (EOFError, KeyboardInterrupt):
+        print()
+        return full_message
+
+    if not new_summary:
+        _print_warning("Summary cannot be empty, using default")
+        return full_message
+
+    lines = full_message.split("\n")
+    lines[0] = new_summary
+    return "\n".join(lines)
+
+
 def _prompt_message(summary: str, full_message: str) -> str:
     """Prompt the user for a tag message, with option to edit in $EDITOR.
 
@@ -355,18 +372,7 @@ def _prompt_message(summary: str, full_message: str) -> str:
         if choice == "" or choice == "1":
             return full_message
         elif choice == "2":
-            try:
-                new_summary = _input_with_prefill("Summary: ", summary).strip()
-                if new_summary:
-                    # Replace the first line (summary) with the new one
-                    lines = full_message.split("\n")
-                    lines[0] = new_summary
-                    return "\n".join(lines)
-                _print_warning("Summary cannot be empty, using default")
-                return full_message
-            except (EOFError, KeyboardInterrupt):
-                print()
-                return full_message
+            return _edit_summary(summary, full_message)
         elif choice == "3":
             return _edit_message_in_editor(full_message)
         else:
