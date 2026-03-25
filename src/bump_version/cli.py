@@ -248,9 +248,6 @@ def _show_changes_since_version(current_version: Version | None) -> list[str]:
             _print_info(f"Changes since {current_version}:")
             for commit in commits:
                 print(f"  • {commit}")
-        else:
-            print()
-            _print_warning(f"No commits since {current_version}")
     else:
         commits = _get_commits_since_tag(None)
         if commits:
@@ -496,6 +493,10 @@ def _cmd_bump(args: argparse.Namespace, bump_type: BumpType | None = None) -> in
 
     # Show changes since last version
     commits = _show_changes_since_version(current)
+
+    if not commits and current is not None:
+        _print_error(f"No commits since {current}; nothing to bump.")
+        sys.exit(1)
 
     # Get bump type
     if bump_type is None:
