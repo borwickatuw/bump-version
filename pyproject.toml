@@ -39,5 +39,99 @@ packages = ["src/bump_version"]
 [tool.hatch.build.targets.sdist]
 include = ["src/bump_version"]
 
+[tool.uv]
+default-groups = ["dev", "test"]
+
 [dependency-groups]
-dev = ["pytest>=8.0", "ruff>=0.4"]
+dev = [
+    "ruff>=0.4",
+    "bandit>=1.7",
+    "pip-audit>=2.6",
+]
+test = [
+    "pytest>=8.0",
+    "pytest-cov>=4.0",
+]
+
+[tool.ruff.lint]
+preview = true
+select = [
+    "A",      # flake8-builtins
+    "ARG",    # flake8-unused-arguments
+    "B",      # flake8-bugbear
+    "BLE",    # flake8-blind-except
+    "C90",    # mccabe
+    "E",      # pycodestyle errors
+    "ERA",    # eradicate
+    "F",      # pyflakes
+    "FBT",    # flake8-boolean-trap
+    "N",      # pep8-naming
+    "PL",     # pylint
+    "S",      # flake8-bandit
+    "SIM",    # flake8-simplify
+    "T20",    # flake8-print
+    "TRY",    # tryceratops
+    "W",      # pycodestyle warnings
+]
+
+[tool.ruff.lint.mccabe]
+max-complexity = 10
+
+[tool.ruff.lint.pylint]
+max-args = 5
+max-statements = 50
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = [
+    "S101",    # assert in tests
+    "S603",    # subprocess calls in test fixtures
+    "S404",    # subprocess import in test fixtures
+    "S607",    # partial executable path (git) in test fixtures
+    "ARG002",  # unused fixture args (pytest fixtures used for side effects)
+    "PLR6301", # methods could be functions (pytest test class convention)
+    "PLR2004", # magic values in assertions
+    "PLC1901", # empty string comparisons in assertions
+    "PLC2701", # private name imports (testing internal functions)
+]
+"src/bump_version/cli.py" = [
+    "T20",     # print statements are the UI for this CLI tool
+    "S603",    # subprocess calls are intentional (git commands)
+    "S404",    # subprocess import is intentional
+    "S607",    # partial executable path (git) is intentional
+    "FBT001",  # boolean positional args in internal functions
+    "FBT002",  # boolean default in internal functions
+    "PLR0913", # many args in _cmd_bump (argparse namespace)
+    "C901",    # _cmd_bump complexity is inherent to interactive workflow
+    "PLR0912", # _cmd_bump branches are inherent to interactive workflow
+    "PLR0915", # _cmd_bump statements are inherent to interactive workflow
+]
+
+[tool.bandit]
+exclude_dirs = [".venv", "tests"]
+skips = ["B101", "B404", "B603"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+addopts = "--strict-markers -ra --tb=short"
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+]
+
+[tool.coverage.run]
+source = ["src"]
+branch = true
+omit = [
+    "*/__init__.py",
+    "*/conftest.py",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "if TYPE_CHECKING:",
+    "if __name__ == .__main__.:",
+    "raise NotImplementedError",
+]
+fail_under = 70
+show_missing = true

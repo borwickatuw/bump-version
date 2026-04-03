@@ -1,3 +1,8 @@
 """bump-version: A CLI tool to bump semantic version tags in Git repositories."""
 
-__version__ = "1.0.0"
+from importlib.metadata import PackageNotFoundError, version
+
+try:
+    __version__ = version("bump-version")
+except PackageNotFoundError:
+    __version__ = "0.0.0+unknown"

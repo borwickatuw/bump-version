@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import contextlib
 import os
 import re
 import readline
@@ -13,8 +14,7 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import NoReturn
 
-
-__version__ = "1.0.0"
+from bump_version import __version__
 
 
 class BumpType(Enum):
@@ -89,7 +89,9 @@ def _print_error(message: str) -> None:
     print(Color.wrap(message, Color.RED), file=sys.stderr)
 
 
-def _run_git(*args: str, check: bool = True, capture: bool = True) -> subprocess.CompletedProcess[str]:
+def _run_git(
+    *args: str, check: bool = True, capture: bool = True
+) -> subprocess.CompletedProcess[str]:
     """
     Run a git command safely.
 
@@ -157,7 +159,9 @@ def _sync_repo() -> None:
         if result.returncode == 0:
             _print_success("Branch updated successfully")
         else:
-            _print_warning("Could not pull branch (may have uncommitted changes or no tracking)")
+            _print_warning(
+                "Could not pull branch (may have uncommitted changes or no tracking)"
+            )
 
 
 def _get_version_tags(prefix: str = "v") -> list[str]:
@@ -167,10 +171,7 @@ def _get_version_tags(prefix: str = "v") -> list[str]:
     Returns tags sorted by version number (lowest to highest).
     """
     # Build pattern based on prefix
-    if prefix:
-        pattern = f"{prefix}[0-9]*.[0-9]*.[0-9]*"
-    else:
-        pattern = "[0-9]*.[0-9]*.[0-9]*"
+    pattern = f"{prefix}[0-9]*.[0-9]*.[0-9]*" if prefix else "[0-9]*.[0-9]*.[0-9]*"
 
     result = _run_git("tag", "-l", pattern, check=False)
     if result.returncode != 0:
@@ -253,12 +254,12 @@ def _show_changes_since_version(current_version: Version | None) -> list[str]:
         if commits:
             print()
             _print_info("Commits in repository:")
-            # Show last 10 if there are many
-            display_commits = commits[:10]
+            max_display = 10
+            display_commits = commits[:max_display]
             for commit in display_commits:
                 print(f"  • {commit}")
-            if len(commits) > 10:
-                print(f"  ... and {len(commits) - 10} more commits")
+            if len(commits) > max_display:
+                print(f"  ... and {len(commits) - max_display} more commits")
     return commits
 
 
@@ -273,7 +274,7 @@ def _prompt_yes_no(message: str, default: bool = False) -> bool:
 
     if not response:
         return default
-    return response in ("y", "yes")
+    return response in {"y", "yes"}
 
 
 def _prompt_bump_type() -> BumpType:
@@ -292,11 +293,11 @@ def _prompt_bump_type() -> BumpType:
             print()
             sys.exit(0)
 
-        if choice in ("1", "major"):
+        if choice in {"1", "major"}:
             return BumpType.MAJOR
-        elif choice in ("2", "minor"):
+        elif choice in {"2", "minor"}:
             return BumpType.MINOR
-        elif choice in ("3", "patch"):
+        elif choice in {"3", "patch"}:
             return BumpType.PATCH
         else:
             _print_warning("Invalid choice. Please enter 1, 2, or 3.")
@@ -313,6 +314,7 @@ def _input_with_prefill(prompt: str, prefill: str) -> str:
     Uses readline to allow editing the prefilled text with standard
     terminal key bindings (Ctrl+A, Ctrl+E, etc.).
     """
+
     def hook() -> None:
         readline.insert_text(prefill)
         readline.redisplay()
@@ -369,7 +371,7 @@ def _prompt_message(summary: str, full_message: str) -> str:
             print()
             return full_message
 
-        if choice == "" or choice == "1":
+        if not choice or choice == "1":
             return full_message
         elif choice == "2":
             return _edit_summary(summary, full_message)
@@ -388,6 +390,7 @@ def _edit_message_in_editor(default_message: str) -> str:
         suffix="_TAG_EDITMSG",
         prefix="bump-version-",
         delete=False,
+        encoding="utf-8",
     ) as f:
         f.write(default_message)
         f.write("\n\n# Enter your tag message above.")
@@ -398,7 +401,9 @@ def _edit_message_in_editor(default_message: str) -> str:
     try:
         result = subprocess.run([editor, temp_path], check=False)
         if result.returncode != 0:
-            _print_warning(f"Editor exited with code {result.returncode}, using default message")
+            _print_warning(
+                f"Editor exited with code {result.returncode}, using default message"
+            )
             return default_message
 
         with open(temp_path, encoding="utf-8") as f:
@@ -414,7 +419,7 @@ def _edit_message_in_editor(default_message: str) -> str:
             _print_warning("Empty message, using default")
             return default_message
 
-        return message
+        return message  # noqa: TRY300
     except FileNotFoundError:
         _print_warning(f"Editor '{editor}' not found, using default message")
         return default_message
@@ -422,10 +427,8 @@ def _edit_message_in_editor(default_message: str) -> str:
         _print_warning(f"Could not open editor: {e}, using default message")
         return default_message
     finally:
-        try:
+        with contextlib.suppress(OSError):
             os.unlink(temp_path)
-        except OSError:
-            pass
 
 
 def _create_tag(tag: str, message: str, dry_run: bool = False) -> bool:
@@ -493,7 +496,9 @@ def _cmd_bump(args: argparse.Namespace, bump_type: BumpType | None = None) -> in
     current = _get_current_version(args.prefix)
 
     if current is None:
-        _print_warning(f"No existing version tags found (looking for {args.prefix}X.Y.Z pattern)")
+        _print_warning(
+            f"No existing version tags found (looking for {args.prefix}X.Y.Z pattern)"
+        )
     else:
         _print_info(f"Current version: {current}")
 
@@ -544,7 +549,9 @@ def _cmd_bump(args: argparse.Namespace, bump_type: BumpType | None = None) -> in
         print()
         # Show first line for confirmation (full message may be long)
         display_msg = tag_message.split("\n")[0] if "\n" in tag_message else tag_message
-        if not _prompt_yes_no(f"Create tag '{new_version}' with message '{display_msg}'?", default=True):
+        if not _prompt_yes_no(
+            f"Create tag '{new_version}' with message '{display_msg}'?", default=True
+        ):
             _print_warning("Aborted")
             return 0
 
@@ -558,9 +565,10 @@ def _cmd_bump(args: argparse.Namespace, bump_type: BumpType | None = None) -> in
             return 1
     elif not args.dry_run and not args.yes:
         print()
-        if _prompt_yes_no("Would you like to push the tag to remote?"):
-            if not _push_tag(str(new_version), args.dry_run):
-                return 1
+        if _prompt_yes_no(
+            "Would you like to push the tag to remote?"
+        ) and not _push_tag(str(new_version), args.dry_run):
+            return 1
 
     print()
     _print_success("Done!")
@@ -634,10 +642,18 @@ Examples:
 
     subparsers = parser.add_subparsers(dest="command", metavar="COMMAND")
 
-    subparsers.add_parser("major", parents=[common_parser], help="Bump the major version (X.0.0)")
-    subparsers.add_parser("minor", parents=[common_parser], help="Bump the minor version (x.Y.0)")
-    subparsers.add_parser("patch", parents=[common_parser], help="Bump the patch/point version (x.y.Z)")
-    subparsers.add_parser("current", parents=[common_parser], help="Show the current version")
+    subparsers.add_parser(
+        "major", parents=[common_parser], help="Bump the major version (X.0.0)"
+    )
+    subparsers.add_parser(
+        "minor", parents=[common_parser], help="Bump the minor version (x.Y.0)"
+    )
+    subparsers.add_parser(
+        "patch", parents=[common_parser], help="Bump the patch/point version (x.y.Z)"
+    )
+    subparsers.add_parser(
+        "current", parents=[common_parser], help="Show the current version"
+    )
 
     return parser
 
