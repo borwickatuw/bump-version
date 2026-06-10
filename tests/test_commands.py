@@ -11,6 +11,7 @@ from bump_version.cli import (
     _cmd_bump,
     _cmd_current,
     _create_tag,
+    _EditorRequest,
     _edit_summary,
     _get_default_remote,
     _get_remotes,
@@ -23,6 +24,7 @@ from bump_version.cli import (
     _prompt_yes_no,
     _push_tag,
     _show_changes_since_version,
+    _strip_editor_content,
     _sync_repo,
     main,
 )
@@ -282,14 +284,10 @@ class TestPromptMessage:
         result = _prompt_message("Summary", "Full message")
         assert result == "Edited"
 
-    def test_choice_3_opens_editor(self, monkeypatch):
+    def test_choice_3_returns_editor_request(self, monkeypatch):
         monkeypatch.setattr("builtins.input", lambda _: "3")
-        monkeypatch.setattr(
-            "bump_version.cli._edit_message_in_editor",
-            lambda _d: "Editor result",
-        )
         result = _prompt_message("Summary", "Full message")
-        assert result == "Editor result"
+        assert result == _EditorRequest("Full message")
 
     def test_eof_uses_default(self, monkeypatch):
         def raise_eof(_):
@@ -304,6 +302,40 @@ class TestPromptMessage:
         monkeypatch.setattr("builtins.input", lambda _: next(inputs))
         result = _prompt_message("Summary", "Full message")
         assert result == "Full message"
+
+
+class TestStripEditorContent:
+    """Tests for _strip_editor_content (scissors cut + comment/whitespace strip)."""
+
+    def test_plain_message_passthrough(self):
+        assert _strip_editor_content("Release v1.0.0") == "Release v1.0.0"
+
+    def test_drops_comment_lines(self):
+        content = "Release v1.0.0\n# a comment\n\nChanges:\n- foo\n"
+        assert _strip_editor_content(content) == "Release v1.0.0\n\nChanges:\n- foo"
+
+    def test_cuts_at_scissors_line(self):
+        content = (
+            "Release v1.0.0\n\nChanges:\n- foo\n\n"
+            "# ------------------------ >8 ------------------------\n"
+            "# Diff against v0.9.0:\n"
+            "diff --git a/f b/f\n"
+            "@@ -1 +1 @@\n"
+            "-old\n+new\n"
+        )
+        assert _strip_editor_content(content) == "Release v1.0.0\n\nChanges:\n- foo"
+
+    def test_empty_after_strip(self):
+        # Only comments and scissors content — nothing left after strip.
+        content = (
+            "# everything is a comment\n"
+            "# ------------------------ >8 ------------------------\n"
+            "anything below\n"
+        )
+        assert _strip_editor_content(content) == ""
+
+    def test_whitespace_only_returns_empty(self):
+        assert _strip_editor_content("\n\n   \n\n") == ""
 
 
 class TestMain:

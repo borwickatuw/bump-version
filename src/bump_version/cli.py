@@ -7,6 +7,7 @@ import contextlib
 import os
 import re
 import readline
+import shlex
 import subprocess
 import sys
 import tempfile
@@ -343,7 +344,19 @@ def _edit_summary(summary: str, full_message: str) -> str:
     return "\n".join(lines)
 
 
-def _prompt_message(summary: str, full_message: str) -> str:
+@dataclass(frozen=True)
+class _EditorRequest:
+    """Sentinel: user chose to compose the message in $EDITOR.
+
+    Caller invokes `git tag -a -e -F <tmpfile>` so git owns the editor
+    lifecycle, writes to `.git/TAG_EDITMSG` (recognized by editor modes
+    like magit's git-commit-mode), and creates the tag on editor exit.
+    """
+
+    default_message: str
+
+
+def _prompt_message(summary: str, full_message: str) -> str | _EditorRequest:
     """Prompt the user for a tag message, with option to edit in $EDITOR.
 
     Args:
@@ -376,59 +389,9 @@ def _prompt_message(summary: str, full_message: str) -> str:
         elif choice == "2":
             return _edit_summary(summary, full_message)
         elif choice == "3":
-            return _edit_message_in_editor(full_message)
+            return _EditorRequest(full_message)
         else:
             _print_warning("Invalid choice. Please enter 1, 2, or 3.")
-
-
-def _edit_message_in_editor(default_message: str) -> str:
-    """Open $EDITOR to edit the tag message."""
-    editor = _get_editor()
-
-    with tempfile.NamedTemporaryFile(
-        mode="w",
-        suffix="_TAG_EDITMSG",
-        prefix="bump-version-",
-        delete=False,
-        encoding="utf-8",
-    ) as f:
-        f.write(default_message)
-        f.write("\n\n# Enter your tag message above.")
-        f.write("\n# Lines starting with '#' will be ignored.")
-        f.write("\n# An empty message will use the default.")
-        temp_path = f.name
-
-    try:
-        result = subprocess.run([editor, temp_path], check=False)
-        if result.returncode != 0:
-            _print_warning(
-                f"Editor exited with code {result.returncode}, using default message"
-            )
-            return default_message
-
-        with open(temp_path, encoding="utf-8") as f:
-            lines = f.readlines()
-
-        # Filter out comment lines and strip
-        message_lines = [
-            line.rstrip("\n\r") for line in lines if not line.strip().startswith("#")
-        ]
-        message = "\n".join(message_lines).strip()
-
-        if not message:
-            _print_warning("Empty message, using default")
-            return default_message
-
-        return message  # noqa: TRY300
-    except FileNotFoundError:
-        _print_warning(f"Editor '{editor}' not found, using default message")
-        return default_message
-    except OSError as e:
-        _print_warning(f"Could not open editor: {e}, using default message")
-        return default_message
-    finally:
-        with contextlib.suppress(OSError):
-            os.unlink(temp_path)
 
 
 def _create_tag(tag: str, message: str, dry_run: bool = False) -> bool:
@@ -447,6 +410,155 @@ def _create_tag(tag: str, message: str, dry_run: bool = False) -> bool:
     else:
         _print_error(f"Failed to create tag: {result.stderr}")
         return False
+
+
+# Canonical scissors line, matching `git commit -v`. Lines from here down
+# are dropped by _strip_editor_content. Hardcoded `#` (not core.commentChar)
+# because git itself uses `#` for this template regardless of config.
+_SCISSORS_LINE = "# ------------------------ >8 ------------------------"
+
+
+def _build_editor_seed(default_message: str, prev_tag: str | None) -> str:
+    """Build the editor seed: default message plus optional scissors-cut diff.
+
+    When prev_tag is known and `git diff prev_tag..HEAD` produces output,
+    appends a `commit -v`-style section below a scissors line so the user
+    can see what's being released while composing the message.
+    """
+    if not prev_tag:
+        return default_message
+    diff = _run_git("diff", f"{prev_tag}..HEAD", check=False)
+    if diff.returncode != 0 or not diff.stdout:
+        return default_message
+    return (
+        f"{default_message}\n\n"
+        f"{_SCISSORS_LINE}\n"
+        # Metadata for editor hooks (e.g. magit) that want to know what
+        # we're tagging against. Stripped along with the rest by our
+        # default `#`-line cleanup; never reaches the tag message.
+        f"# bump-version: prev-tag={prev_tag}\n"
+        "# Lines above the scissors will be the tag message.\n"
+        "# Lines below (and the scissors line itself) are stripped.\n"
+        "#\n"
+        f"# Diff against {prev_tag} (`git diff {prev_tag}..HEAD`):\n"
+        f"{diff.stdout}"
+    )
+
+
+def _strip_editor_content(content: str) -> str:
+    """Apply git's default `strip` cleanup plus scissors cut.
+
+    Drops the scissors line and everything below it, removes lines starting
+    with `#`, and strips leading/trailing whitespace. Returns the message
+    git would accept; empty string means "nothing left, abort".
+    """
+    lines = content.splitlines()
+    cut = next(
+        (i for i, line in enumerate(lines) if line.rstrip() == _SCISSORS_LINE),
+        len(lines),
+    )
+    kept = [line for line in lines[:cut] if not line.startswith("#")]
+    return "\n".join(kept).strip()
+
+
+def _get_git_dir() -> str:
+    """Return the absolute path to the repository's git directory.
+
+    Uses `git rev-parse --absolute-git-dir` so worktrees, submodules, and
+    non-default `.git` locations all resolve to the right place.
+    """
+    result = _run_git("rev-parse", "--absolute-git-dir", check=False)
+    if result.returncode != 0:
+        raise RuntimeError(
+            "Could not locate git directory: " + (result.stderr or "").strip()
+        )
+    return result.stdout.strip()
+
+
+def _create_tag_via_editor(
+    tag: str,
+    default_message: str,
+    prev_tag: str | None = None,
+    dry_run: bool = False,
+) -> bool:
+    """Create an annotated git tag via $EDITOR with diff context.
+
+    Writes `<git-dir>/TAG_EDITMSG` (mirroring git's own location, so editor
+    modes like magit's git-commit-mode that key off the `.git/` parent
+    auto-activate), seeds it with the default message plus a `commit -v`-
+    style scissors section containing `git diff <prev_tag>..HEAD` when
+    prev_tag is given, launches $EDITOR, then strips/cuts and creates the
+    tag via `git tag -a -F`.
+
+    We own the editor (rather than `git tag -e -F`) because:
+      * `git tag` rejects `--cleanup=scissors` (only commit accepts it), and
+      * `git tag -a -e -F` skips its empty-message check when -F is set,
+        so an emptied buffer would otherwise create an empty-message tag.
+    Owning the loop lets us cut scissors content and abort on empty input.
+
+    On success, `git tag -a` cleans up `TAG_EDITMSG` itself. On editor
+    failure or empty-message abort, the file is left in place so the user
+    can recover their pre-strip edit on the next run — matches what git
+    does for its own tag editing flow.
+    """
+    if dry_run:
+        _print_info(f"[DRY RUN] Would open editor to create tag: {tag}")
+        _print_info(f"[DRY RUN] Default message: {default_message}")
+        return True
+
+    editor = _get_editor()
+    tag_editmsg = os.path.join(_get_git_dir(), "TAG_EDITMSG")
+
+    with open(tag_editmsg, "w", encoding="utf-8") as f:
+        f.write(_build_editor_seed(default_message, prev_tag))
+
+    _print_info(f"Opening {editor} to create tag '{tag}'...")
+    try:
+        # shlex.split handles editors like `emacsclient -t` or
+        # `code --wait` that carry arguments in $EDITOR.
+        edit = subprocess.run(  # noqa: S603
+            [*shlex.split(editor), tag_editmsg], check=False
+        )
+    except FileNotFoundError:
+        _print_error(f"Editor '{editor}' not found")
+        return False
+    if edit.returncode != 0:
+        _print_warning(
+            f"Editor exited with code {edit.returncode}; aborting tag creation"
+        )
+        return False
+
+    with open(tag_editmsg, encoding="utf-8") as f:
+        message = _strip_editor_content(f.read())
+
+    if not message:
+        _print_warning("Empty message; aborting tag creation")
+        return False
+
+    # Pass the cleaned message via a separate tempfile so TAG_EDITMSG keeps
+    # the user's pre-strip edits (matches git's recovery semantics).
+    with tempfile.NamedTemporaryFile(
+        mode="w",
+        prefix="bump-version-",
+        suffix=".msg",
+        delete=False,
+        encoding="utf-8",
+    ) as f:
+        f.write(message + "\n")
+        msg_path = f.name
+    try:
+        _print_info(f"Creating tag '{tag}'...")
+        result = _run_git(
+            "tag", "-a", "-F", msg_path, "--cleanup=verbatim", tag, check=False
+        )
+        if result.returncode == 0:
+            _print_success(f"Tag '{tag}' created successfully")
+            return True
+        _print_error(f"Failed to create tag: {result.stderr}")
+        return False
+    finally:
+        with contextlib.suppress(OSError):
+            os.unlink(msg_path)
 
 
 def _push_tag(tag: str, dry_run: bool = False) -> bool:
@@ -536,28 +648,45 @@ def _cmd_bump(args: argparse.Namespace, bump_type: BumpType | None = None) -> in
 
     if args.message:
         # Message provided via command line
-        tag_message = args.message
+        prompt_result: str | _EditorRequest = args.message
     elif args.yes:
         # Non-interactive mode, use default
-        tag_message = default_message
+        prompt_result = default_message
     else:
         # Interactive mode, prompt for message
-        tag_message = _prompt_message(summary, default_message)
+        prompt_result = _prompt_message(summary, default_message)
 
-    # Confirm
-    if not args.yes and not args.dry_run:
-        print()
-        # Show first line for confirmation (full message may be long)
-        display_msg = tag_message.split("\n")[0] if "\n" in tag_message else tag_message
-        if not _prompt_yes_no(
-            f"Create tag '{new_version}' with message '{display_msg}'?", default=True
+    if isinstance(prompt_result, _EditorRequest):
+        # Editor path: $EDITOR sees the message + `commit -v`-style diff
+        # below a scissors line; saving with an empty buffer aborts.
+        # No separate confirmation — exiting the editor IS the confirmation.
+        if not _create_tag_via_editor(
+            str(new_version),
+            prompt_result.default_message,
+            prev_tag=str(current) if current else None,
+            dry_run=args.dry_run,
         ):
-            _print_warning("Aborted")
-            return 0
+            return 1
+    else:
+        tag_message = prompt_result
 
-    # Create tag
-    if not _create_tag(str(new_version), tag_message, args.dry_run):
-        return 1
+        # Confirm
+        if not args.yes and not args.dry_run:
+            print()
+            # Show first line for confirmation (full message may be long)
+            display_msg = (
+                tag_message.split("\n")[0] if "\n" in tag_message else tag_message
+            )
+            if not _prompt_yes_no(
+                f"Create tag '{new_version}' with message '{display_msg}'?",
+                default=True,
+            ):
+                _print_warning("Aborted")
+                return 0
+
+        # Create tag
+        if not _create_tag(str(new_version), tag_message, args.dry_run):
+            return 1
 
     # Push if requested
     if args.push:
