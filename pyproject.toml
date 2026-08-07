@@ -41,12 +41,15 @@ include = ["src/bump_version"]
 
 [tool.uv]
 default-groups = ["dev", "test"]
+# requires-python stays >=3.9 for end users (zero runtime deps, installed via
+# uvx/pip), but dev/test tooling only runs on modern Python. Restricting lock
+# resolution avoids carrying vulnerable pytest 8.x for the <3.10 fork.
+environments = ["python_version >= '3.10'"]
 
 [dependency-groups]
 dev = [
     "ruff>=0.4",
     "bandit>=1.7",
-    "pip-audit>=2.6",
 ]
 test = [
     "pytest>=8.0",

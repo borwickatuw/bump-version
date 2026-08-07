@@ -1,3 +1,8 @@
+SHELL := bash
+.SHELLFLAGS := -eu -o pipefail -c
+MAKEFLAGS += --warn-undefined-variables
+MAKEFLAGS += --no-builtin-rules
+
 .PHONY: help
 help: ## Show this help
 	@grep -E '^[a-zA-Z0-9_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  %-20s %s\n", $$1, $$2}'
@@ -45,7 +50,7 @@ security-bandit: ## Run bandit security linter
 
 .PHONY: security-deps
 security-deps: ## Check dependency vulnerabilities
-	@uv run pip-audit
+	@uv audit
 
 # =============================================================================
 # Quality
