@@ -348,9 +348,10 @@ def _edit_summary(summary: str, full_message: str) -> str:
 class _EditorRequest:
     """Sentinel: user chose to compose the message in $EDITOR.
 
-    Caller invokes `git tag -a -e -F <tmpfile>` so git owns the editor
-    lifecycle, writes to `.git/TAG_EDITMSG` (recognized by editor modes
-    like magit's git-commit-mode), and creates the tag on editor exit.
+    Caller hands this to `_create_tag_via_editor`, which owns the editor
+    lifecycle: it seeds `<git-dir>/TAG_EDITMSG` (recognized by editor modes
+    like magit's git-commit-mode) and creates the tag via `git tag -a -F`
+    after stripping scissors content and comment lines.
     """
 
     default_message: str
@@ -594,6 +595,70 @@ def _cmd_current(args: argparse.Namespace) -> int:
         return 1
 
 
+def _resolve_tag_message(
+    args: argparse.Namespace, summary: str, default_message: str
+) -> str | _EditorRequest:
+    """Pick the tag message source: CLI flag, non-interactive default, or prompt."""
+    if args.message:
+        return args.message
+    if args.yes:
+        return default_message
+    return _prompt_message(summary, default_message)
+
+
+def _resolve_message_and_create_tag(
+    args: argparse.Namespace,
+    new_version: Version,
+    current: Version | None,
+    commits: list[str],
+) -> int | None:
+    """Build the tag message and create the tag (editor or direct path).
+
+    Returns an exit code to propagate (1 on failure, 0 on user abort) or
+    None when the tag was created and the caller should continue.
+    """
+    summary = f"Release {new_version}"
+    if commits:
+        detail_lines = ["Changes:"] + [f"- {c}" for c in commits]
+        default_message = summary + "\n\n" + "\n".join(detail_lines)
+    else:
+        default_message = summary
+
+    prompt_result = _resolve_tag_message(args, summary, default_message)
+
+    if isinstance(prompt_result, _EditorRequest):
+        # Editor path: $EDITOR sees the message + `commit -v`-style diff
+        # below a scissors line; saving with an empty buffer aborts.
+        # No separate confirmation — exiting the editor IS the confirmation.
+        if not _create_tag_via_editor(
+            str(new_version),
+            prompt_result.default_message,
+            prev_tag=str(current) if current else None,
+            dry_run=args.dry_run,
+        ):
+            return 1
+        return None
+
+    tag_message = prompt_result
+
+    # Confirm
+    if not args.yes and not args.dry_run:
+        print()
+        # Show first line for confirmation (full message may be long)
+        display_msg = tag_message.split("\n")[0] if "\n" in tag_message else tag_message
+        if not _prompt_yes_no(
+            f"Create tag '{new_version}' with message '{display_msg}'?",
+            default=True,
+        ):
+            _print_warning("Aborted")
+            return 0
+
+    # Create tag
+    if not _create_tag(str(new_version), tag_message, args.dry_run):
+        return 1
+    return None
+
+
 def _cmd_bump(args: argparse.Namespace, bump_type: BumpType | None = None) -> int:
     """Handle version bump commands."""
     # Sync if requested
@@ -638,55 +703,9 @@ def _cmd_bump(args: argparse.Namespace, bump_type: BumpType | None = None) -> in
     else:
         _print_info(f"New version: {new_version}")
 
-    # Build default tag message with summary and detail
-    summary = f"Release {new_version}"
-    if commits:
-        detail_lines = ["Changes:"] + [f"- {c}" for c in commits]
-        default_message = summary + "\n\n" + "\n".join(detail_lines)
-    else:
-        default_message = summary
-
-    if args.message:
-        # Message provided via command line
-        prompt_result: str | _EditorRequest = args.message
-    elif args.yes:
-        # Non-interactive mode, use default
-        prompt_result = default_message
-    else:
-        # Interactive mode, prompt for message
-        prompt_result = _prompt_message(summary, default_message)
-
-    if isinstance(prompt_result, _EditorRequest):
-        # Editor path: $EDITOR sees the message + `commit -v`-style diff
-        # below a scissors line; saving with an empty buffer aborts.
-        # No separate confirmation — exiting the editor IS the confirmation.
-        if not _create_tag_via_editor(
-            str(new_version),
-            prompt_result.default_message,
-            prev_tag=str(current) if current else None,
-            dry_run=args.dry_run,
-        ):
-            return 1
-    else:
-        tag_message = prompt_result
-
-        # Confirm
-        if not args.yes and not args.dry_run:
-            print()
-            # Show first line for confirmation (full message may be long)
-            display_msg = (
-                tag_message.split("\n")[0] if "\n" in tag_message else tag_message
-            )
-            if not _prompt_yes_no(
-                f"Create tag '{new_version}' with message '{display_msg}'?",
-                default=True,
-            ):
-                _print_warning("Aborted")
-                return 0
-
-        # Create tag
-        if not _create_tag(str(new_version), tag_message, args.dry_run):
-            return 1
+    result = _resolve_message_and_create_tag(args, new_version, current, commits)
+    if result is not None:
+        return result
 
     # Push if requested
     if args.push:
