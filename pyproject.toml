@@ -103,10 +103,6 @@ max-statements = 50
     "S607",    # partial executable path (git) is intentional
     "FBT001",  # boolean positional args in internal functions
     "FBT002",  # boolean default in internal functions
-    "PLR0913", # many args in _cmd_bump (argparse namespace)
-    "C901",    # _cmd_bump complexity is inherent to interactive workflow
-    "PLR0912", # _cmd_bump branches are inherent to interactive workflow
-    "PLR0915", # _cmd_bump statements are inherent to interactive workflow
 ]
 
 [tool.bandit]
@@ -138,3 +134,8 @@ exclude_lines = [
 ]
 fail_under = 70
 show_missing = true
+
+[tool.pysmelly]
+# Standard exclude (PYSMELLY-REVIEW.md Practice 5): tests analyzed separately;
+# test-blindness tradeoff documented there.
+exclude = ["tests/"]

@@ -659,15 +659,30 @@ def _resolve_message_and_create_tag(
     return None
 
 
-def _cmd_bump(args: argparse.Namespace, bump_type: BumpType | None = None) -> int:
-    """Handle version bump commands."""
-    # Sync if requested
+def _maybe_sync(args: argparse.Namespace) -> None:
+    """Sync the repo if requested, or offer to when running interactively."""
     if args.sync:
         _sync_repo()
     elif not args.yes:
         print()
         if _prompt_yes_no("Would you like to sync/pull the repository and tags first?"):
             _sync_repo()
+
+
+def _maybe_push(new_version: Version, args: argparse.Namespace) -> bool:
+    """Push the tag if requested, or offer to when running interactively."""
+    if args.push:
+        return _push_tag(str(new_version), args.dry_run)
+    if not args.dry_run and not args.yes:
+        print()
+        if _prompt_yes_no("Would you like to push the tag to remote?"):
+            return _push_tag(str(new_version), args.dry_run)
+    return True
+
+
+def _cmd_bump(args: argparse.Namespace, bump_type: BumpType | None = None) -> int:
+    """Handle version bump commands."""
+    _maybe_sync(args)
 
     # Get current version
     current = _get_current_version(args.prefix)
@@ -707,16 +722,8 @@ def _cmd_bump(args: argparse.Namespace, bump_type: BumpType | None = None) -> in
     if result is not None:
         return result
 
-    # Push if requested
-    if args.push:
-        if not _push_tag(str(new_version), args.dry_run):
-            return 1
-    elif not args.dry_run and not args.yes:
-        print()
-        if _prompt_yes_no(
-            "Would you like to push the tag to remote?"
-        ) and not _push_tag(str(new_version), args.dry_run):
-            return 1
+    if not _maybe_push(new_version, args):
+        return 1
 
     print()
     _print_success("Done!")
