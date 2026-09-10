@@ -198,7 +198,7 @@ dynamic = ["version"]
 
 ## Requirements
 
-- Python 3.9+
+- Python 3.11+
 - Git
 - A Git repository with (or without) existing version tags
 

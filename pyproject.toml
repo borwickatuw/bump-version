@@ -3,7 +3,7 @@ name = "bump-version"
 dynamic = ["version"]
 description = "A CLI tool to bump semantic version tags in Git repositories"
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.11"
 license = { text = "BSD-3-Clause" }
 authors = [{ name = "John Borwick", email = "borwick@uw.edu" }]
 keywords = ["git", "version", "semver", "tags", "cli"]
@@ -14,8 +14,6 @@ classifiers = [
     "License :: OSI Approved :: BSD License",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.9",
-    "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
@@ -41,10 +39,6 @@ include = ["src/bump_version"]
 
 [tool.uv]
 default-groups = ["dev", "test"]
-# requires-python stays >=3.9 for end users (zero runtime deps, installed via
-# uvx/pip), but dev/test tooling only runs on modern Python. Restricting lock
-# resolution avoids carrying vulnerable pytest 8.x for the <3.10 fork.
-environments = ["python_version >= '3.10'"]
 
 [dependency-groups]
 dev = [

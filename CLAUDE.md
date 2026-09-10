@@ -8,7 +8,7 @@ CLI tool to bump semantic version tags in Git repositories. Zero external depend
 
 ## Coding Standards
 
-Supports Python >=3.9 (broader than the standard >=3.12) because this is a public CLI tool installed via `uvx`/`pip` on diverse systems. Uses `from __future__ import annotations` for modern type hint syntax.
+Supports Python >=3.11 (broader than the standard >=3.12) because this is a public CLI tool installed via `uvx`/`pip` on diverse systems; the floor is 3.11 rather than lower because the pyproject-awareness features need stdlib `tomllib`. Uses `from __future__ import annotations` for modern type hint syntax.
 
 All code is in a single file (`src/bump_version/cli.py`). This is intentional for a focused CLI utility — see `docs/DECISIONS.md` for rationale on design choices.
 
