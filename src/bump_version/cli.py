@@ -11,6 +11,7 @@ import shlex
 import subprocess
 import sys
 import tempfile
+import tomllib
 from dataclasses import dataclass
 from enum import Enum
 from typing import NoReturn
@@ -476,6 +477,76 @@ def _get_git_dir() -> str:
     return result.stdout.strip()
 
 
+def _get_git_root() -> str:
+    """Return the absolute path to the repository's working-tree root."""
+    result = _run_git("rev-parse", "--show-toplevel", check=False)
+    if result.returncode != 0:
+        raise RuntimeError(
+            "Could not locate git root: " + (result.stderr or "").strip()
+        )
+    return result.stdout.strip()
+
+
+def _read_pyproject() -> dict | None:
+    """Parse pyproject.toml at the git root, or return None if absent.
+
+    A file that exists but fails to parse is a fail-fast error: exit 1
+    with a clear message rather than silently skipping the version check.
+    """
+    path = os.path.join(_get_git_root(), "pyproject.toml")
+    if not os.path.exists(path):
+        return None
+    try:
+        with open(path, "rb") as f:
+            return tomllib.load(f)
+    except tomllib.TOMLDecodeError as exc:
+        _print_error(f"Error: could not parse {path}: {exc}")
+        sys.exit(1)
+
+
+def _check_pyproject_version() -> None:
+    """Refuse to bump when pyproject.toml pins a static [project] version.
+
+    Tagging such a repo would leave the tree claiming the old version. The
+    escape hatch is `allow-static-version = true` under [tool.bump-version]
+    — a durable per-repo fact, deliberately config rather than a CLI flag.
+    """
+    pyproject = _read_pyproject()
+    if pyproject is None:
+        return
+    project = pyproject.get("project")
+    if not isinstance(project, dict) or "version" not in project:
+        return
+    if "version" in project.get("dynamic", []):
+        return
+
+    tool = pyproject.get("tool")
+    config = tool.get("bump-version") if isinstance(tool, dict) else None
+    allow = config.get("allow-static-version") if isinstance(config, dict) else None
+
+    if allow is True:
+        _print_info(
+            "pyproject.toml pins a static version; proceeding anyway "
+            "(allow-static-version = true)"
+        )
+        return
+    if allow is not None and not isinstance(allow, bool):
+        _print_error(
+            "Error: allow-static-version under [tool.bump-version] must be a boolean"
+        )
+        sys.exit(1)
+
+    _print_error(
+        f"pyproject.toml pins version {project['version']} statically; "
+        "tagging would make it stale.\n"
+        "Run 'bump-version dynamic-pyproject' to switch to git-tag "
+        "versioning, or set\n"
+        "allow-static-version = true under [tool.bump-version] "
+        "if this is intentional."
+    )
+    sys.exit(1)
+
+
 def _create_tag_via_editor(
     tag: str,
     default_message: str,
@@ -683,6 +754,7 @@ def _maybe_push(new_version: Version, args: argparse.Namespace) -> bool:
 def _cmd_bump(args: argparse.Namespace, bump_type: BumpType | None = None) -> int:
     """Handle version bump commands."""
     _maybe_sync(args)
+    _check_pyproject_version()
 
     # Get current version
     current = _get_current_version(args.prefix)

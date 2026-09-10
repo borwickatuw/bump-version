@@ -148,9 +148,10 @@ This tool follows [Semantic Versioning 2.0.0](https://semver.org/):
 
 1. **Tag Discovery**: Scans existing Git tags for semantic version patterns (e.g., `v1.2.3` or `1.2.3`)
 2. **Version Parsing**: Extracts the highest version number from existing tags
-3. **Version Calculation**: Increments the appropriate component based on bump type
-4. **Tag Creation**: Creates an annotated Git tag with the new version
-5. **Optional Push**: Pushes the new tag to the remote repository
+3. **Static Version Guard**: Refuses to bump if `pyproject.toml` pins a static `[project] version` — tagging would leave the tree claiming the old version. Run `bump-version dynamic-pyproject` to migrate to git-tag versioning, or set `allow-static-version = true` under `[tool.bump-version]` to opt out (see [Integrating with Python Projects](#integrating-with-python-projects))
+4. **Version Calculation**: Increments the appropriate component based on bump type
+5. **Tag Creation**: Creates an annotated Git tag with the new version
+6. **Optional Push**: Pushes the new tag to the remote repository
 
 ### Note on Tag Pushing
 
