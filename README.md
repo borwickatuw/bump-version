@@ -50,12 +50,13 @@ uv run bump-version [OPTIONS] [COMMAND]
 
 ### Commands
 
-| Command   | Description                              |
-|-----------|------------------------------------------|
-| `major`   | Bump the major version (X.0.0)           |
-| `minor`   | Bump the minor version (x.Y.0)           |
-| `patch`   | Bump the patch/point version (x.y.Z)     |
-| `current` | Show the current version                 |
+| Command             | Description                                                    |
+|---------------------|----------------------------------------------------------------|
+| `major`             | Bump the major version (X.0.0)                                 |
+| `minor`             | Bump the minor version (x.Y.0)                                 |
+| `patch`             | Bump the patch/point version (x.y.Z)                           |
+| `current`           | Show the current version                                       |
+| `dynamic-pyproject` | Migrate a static hatchling `pyproject.toml` to git-tag versioning |
 
 ### Options
 
@@ -163,9 +164,38 @@ After pushing a tag, you may still see "Your branch is ahead of origin/main by X
 
 Rather than maintaining version strings in multiple places (git tags, `pyproject.toml`, `__init__.py`), you can configure your Python project to derive its version directly from git tags. This keeps the git tag as the single source of truth.
 
+In fact, `bump-version` **refuses to tag** a repo whose `pyproject.toml` pins a static `[project] version`, because the tag would immediately disagree with the tree. You have two ways forward:
+
+### Migrating with `bump-version dynamic-pyproject`
+
+For hatchling-backed projects, the migration is automated:
+
+```bash
+bump-version dynamic-pyproject
+```
+
+This one-time command:
+
+- Replaces the static `version = "..."` in `[project]` with `dynamic = ["version"]`
+- Adds `hatch-vcs` to `[build-system] requires` and appends `[tool.hatch.version] source = "vcs"`
+- Writes `.git_archival.txt` and a `.gitattributes` `export-subst` rule so source tarballs (e.g. GitHub "Download ZIP") still resolve a version without a `.git` directory
+- Warns if the static version disagrees with your latest tag (built versions become tag-derived), and about hardcoded `__version__` strings in your code (left unchanged)
+- Offers to commit the three changed files
+
+All edits are validated by re-parsing before anything is written; `-n/--dry-run` shows the diff without changing anything. After migrating, run `uv sync --reinstall` for editable installs so the environment picks up the tag-derived version.
+
+### Keeping a static version anyway
+
+If your repo intentionally maintains a static version, declare that once in `pyproject.toml`:
+
+```toml
+[tool.bump-version]
+allow-static-version = true
+```
+
 ### Using hatch-vcs
 
-If your project uses [hatchling](https://hatch.pypa.io/) as its build backend, add [hatch-vcs](https://github.com/ofek/hatch-vcs) to automatically read versions from git tags:
+If your project uses [hatchling](https://hatch.pypa.io/) as its build backend, add [hatch-vcs](https://github.com/ofek/hatch-vcs) to automatically read versions from git tags (this is what `dynamic-pyproject` sets up):
 
 ```toml
 [build-system]
