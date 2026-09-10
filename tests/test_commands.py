@@ -30,31 +30,6 @@ from bump_version.cli import (
 )
 
 
-@pytest.fixture()
-def git_repo(tmp_path, monkeypatch):
-    """Create a temporary git repository for testing."""
-    monkeypatch.chdir(tmp_path)
-    subprocess.run(["git", "init"], check=True, capture_output=True)
-    subprocess.run(
-        ["git", "config", "user.email", "test@test.com"],
-        check=True,
-        capture_output=True,
-    )
-    subprocess.run(
-        ["git", "config", "user.name", "Test"],
-        check=True,
-        capture_output=True,
-    )
-    (tmp_path / "README.md").write_text("# test")
-    subprocess.run(["git", "add", "."], check=True, capture_output=True)
-    subprocess.run(
-        ["git", "commit", "-m", "Initial commit"],
-        check=True,
-        capture_output=True,
-    )
-    return tmp_path
-
-
 def _make_args(**kwargs) -> argparse.Namespace:
     """Create an argparse.Namespace with default bump-version options."""
     defaults = {

@@ -2,8 +2,6 @@
 
 import subprocess
 
-import pytest
-
 from bump_version.cli import (
     Version,
     _create_tag,
@@ -13,32 +11,6 @@ from bump_version.cli import (
     _get_version_tags,
     _is_git_repo,
 )
-
-
-@pytest.fixture()
-def git_repo(tmp_path, monkeypatch):
-    """Create a temporary git repository for testing."""
-    monkeypatch.chdir(tmp_path)
-    subprocess.run(["git", "init"], check=True, capture_output=True)
-    subprocess.run(
-        ["git", "config", "user.email", "test@test.com"],
-        check=True,
-        capture_output=True,
-    )
-    subprocess.run(
-        ["git", "config", "user.name", "Test"],
-        check=True,
-        capture_output=True,
-    )
-    # Create initial commit
-    (tmp_path / "README.md").write_text("# test")
-    subprocess.run(["git", "add", "."], check=True, capture_output=True)
-    subprocess.run(
-        ["git", "commit", "-m", "Initial commit"],
-        check=True,
-        capture_output=True,
-    )
-    return tmp_path
 
 
 class TestIsGitRepo:
