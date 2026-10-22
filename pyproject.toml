@@ -1,0 +1,159 @@
+[project]
+name = "bump-version"
+dynamic = ["version"]
+description = "A CLI tool to bump semantic version tags in Git repositories"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "BSD-3-Clause" }
+authors = [{ name = "University of Washington" }]
+keywords = ["git", "version", "semver", "tags", "cli"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: BSD License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Version Control :: Git",
+]
+dependencies = []
+
+[project.scripts]
+bump-version = "bump_version.cli:main"
+
+[build-system]
+requires = ["hatchling", "hatch-vcs"]
+build-backend = "hatchling.build"
+
+[tool.hatch.version]
+source = "vcs"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/bump_version"]
+
+[tool.hatch.build.targets.sdist]
+include = ["src/bump_version"]
+
+[tool.uv]
+default-groups = ["dev", "test"]
+
+[dependency-groups]
+dev = [
+    "ruff>=0.4",
+    "bandit>=1.7",
+    "vulture>=2.15",
+    # fileplan needs Python >=3.12; this repo's floor is >=3.11 by decision
+    # (docs/DECISIONS.md: public CLI installed via uvx/pip), so the dev tool
+    # carries a marker rather than raising the floor.
+    "fileplan==0.8.0; python_version >= '3.12'",
+]
+test = [
+    "pytest>=8.0",
+    "pytest-cov>=4.0",
+]
+
+[tool.ruff]
+line-length = 100
+# mdformat owns markdown (make format-docs); keep ruff out of .md so two
+# formatters never contend. ruff 0.16+ preview formats Python fences inside
+# markdown during `ruff format .` — and would reach docs/plan*/ and
+# .claude/skills/, which make format-docs deliberately excludes.
+extend-exclude = ["*.md"]
+
+[tool.ruff.lint]
+preview = true
+select = [
+    "A",      # flake8-builtins
+    "ARG",    # flake8-unused-arguments
+    "B",      # flake8-bugbear
+    "BLE",    # flake8-blind-except
+    "C90",    # mccabe
+    "E",      # pycodestyle errors
+    "ERA",    # eradicate
+    "F",      # pyflakes
+    "FBT",    # flake8-boolean-trap
+    "N",      # pep8-naming
+    "PL",     # pylint
+    "S",      # flake8-bandit
+    "SIM",    # flake8-simplify
+    "T20",    # flake8-print
+    "TRY",    # tryceratops
+    "UP",     # pyupgrade (modern type hints and syntax)
+    "W",      # pycodestyle warnings
+]
+
+[tool.ruff.lint.mccabe]
+max-complexity = 10
+
+[tool.ruff.lint.pylint]
+max-args = 5
+max-statements = 50
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = [
+    "S101",    # assert in tests
+    "S603",    # subprocess calls in test fixtures
+    "S404",    # subprocess import in test fixtures
+    "S607",    # partial executable path (git) in test fixtures
+    "ARG002",  # unused fixture args (pytest fixtures used for side effects)
+    "PLR6301", # methods could be functions (pytest test class convention)
+    "PLR2004", # magic values in assertions
+    "PLC1901", # empty string comparisons in assertions
+    "PLC2701", # private name imports (testing internal functions)
+]
+# print() is the UI for this CLI tool (menus, listings, the `current` result).
+"src/bump_version/cli.py" = ["T20"]
+"src/bump_version/dynamic_pyproject.py" = ["T20"]
+"src/bump_version/prompts.py" = [
+    "T20",     # print statements are the UI for this CLI tool
+    "S603",    # subprocess call is intentional ($EDITOR)
+    "S404",    # subprocess import is intentional
+]
+"src/bump_version/git.py" = [
+    "S603",    # subprocess calls are intentional (git commands)
+    "S404",    # subprocess import is intentional
+]
+
+[tool.bandit]
+exclude_dirs = [".venv", "tests"]
+skips = ["B101", "B404", "B603"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+addopts = "--strict-markers -ra --tb=short"
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+]
+
+[tool.coverage.run]
+source = ["src"]
+branch = true
+omit = [
+    "*/__init__.py",
+    "*/conftest.py",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "if TYPE_CHECKING:",
+    "if __name__ == .__main__.:",
+    "raise NotImplementedError",
+]
+# Above PYTHON-TESTING.md's 70% floor for CLI tools, with headroom under the
+# measured number: the gate is only worth having if it can see a regression.
+# Read the real figure from `make test-cov`, don't quote it here.
+fail_under = 85
+show_missing = true
+
+[tool.pysmelly]
+# tests/ is excluded and analyzed nowhere else -- there is one pysmelly target
+# and it never sees tests. That buys test-blindness: a symbol whose only
+# callers are tests reads as dead-code. The tradeoff is documented in
+# the maintainer's pysmelly review guide. This section is
+# read only because `make pysmelly` targets this directory -- see the Makefile.
+exclude = ["tests/"]
